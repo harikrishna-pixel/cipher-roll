@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.marberx.photovault</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>cipherroll</string>
+			</array>
+		</dict>
+	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Manrope-Variable.ttf</string>
+	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>CipherRoll uses Face ID or Touch ID as a shortcut to unlock. Your PIN, pattern, or password stays available.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CipherRoll uses the camera when you add a photo you just took, and for a break-in selfie only after you turn that on.</string>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconName</key>
+			<string>AppIcon</string>
+		</dict>
+		<key>CFBundleAlternateIcons</key>
+		<dict>
+			<key>Calculator</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Calculator</string>
+			</dict>
+			<key>Notes</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Notes</string>
+			</dict>
+			<key>Weather</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Weather</string>
+			</dict>
+			<key>Utility</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Utility</string>
+			</dict>
+		</dict>
+	</dict>
+	<key>CFBundleIcons~ipad</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconName</key>
+			<string>AppIcon</string>
+		</dict>
+		<key>CFBundleAlternateIcons</key>
+		<dict>
+			<key>Calculator</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Calculator</string>
+			</dict>
+			<key>Notes</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Notes</string>
+			</dict>
+			<key>Weather</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Weather</string>
+			</dict>
+			<key>Utility</key>
+			<dict>
+				<key>CFBundleIconName</key>
+				<string>Utility</string>
+			</dict>
+		</dict>
+	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CipherRoll uses photo access only if you choose to remove originals from Photos. You decide what CipherRoll can see.</string>
+</dict>
+</plist>

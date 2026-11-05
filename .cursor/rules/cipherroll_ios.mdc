@@ -1,0 +1,41 @@
+---
+description: CipherRoll native iOS (Swift) project rules (always apply)
+alwaysApply: true
+---
+# CipherRoll rules for Cursor (native Swift)
+
+## Project
+- Native iOS app in Swift and SwiftUI, iOS 16+, universal (iPhone, iPad, iPhone Duo). Name CipherRoll. MVVM with `ObservableObject`. Layout: `App/`, `Features/<Name>/`, `Core/Crypto`, `Core/Storage`, `Core/Analytics`, `DesignSystem/`. Share Extension is its own target.
+- Design source of truth: `docs/13_CipherRoll_Final_Screen_Manifest.md` and the PNGs in `design/screens/`. Never build a screen marked DO NOT BUILD. If a screen is missing, ask before inventing it.
+- Tokens, copy and feature rules: `docs/11_CipherRoll_Developer_Handoff.md` (use `docs/00_Native_iOS_Stack.md` for the stack). Events: `docs/10`. Help text: `docs/09`.
+
+## Security (highest priority)
+- Items: CryptoKit `AES.GCM`, random 256-bit key per item, item key wrapped by a vault key, vault key wrapped by a key derived from the lock secret (PBKDF2 with high iterations, or Argon2id). Random salt per vault.
+- Keys only in the Keychain (`WhenUnlockedThisDeviceOnly`) or derived on unlock. Zero out key material when done (`withUnsafeMutableBytes`, `memset_s`) and never keep keys in global state.
+- Never write a readable copy of vault data to disk. Decrypt to memory, or to a protected temp file deleted on close and on app launch.
+- Files: `.completeFileProtection`, `isExcludedFromBackup = true`.
+- Import: copy, verify size or hash, then (only if the user agrees) offer to delete originals. Never delete before verify.
+- Never log PINs, keys, file names, note text or search words. No `print` or `os_log` with user data.
+- Decoy vault: separate store and key. Nothing (timing, logs, analytics) may show which vault opened.
+- Hide the app-switcher preview. Lock on every return to the app.
+
+## Product rules
+- No ads, no ATT. No monthly plan. Trial UI only when StoreKit says the user is eligible.
+- Never use "encrypted", "military-grade", "unhackable" in UI until Praba confirms the security gate passed. Use "Vault contents stay on this iPhone".
+- Positive paywall copy. Show price, period, auto-renew text and "Cancel anytime in Settings".
+- Analytics only after consent, behind an `Analytics` protocol (Mixpanel behind it). Buckets for counts. Never send content.
+
+## UI rules
+- Colours and sizes from doc 11 section 3. Text on gold is navy `#14233B`, never white.
+- Manrope bundled, Phosphor Swift icons.
+- Dynamic Type to accessibility sizes, VoiceOver labels on every icon button, 44x44 pt touch targets, Reduce Motion (120 to 180 ms fades via `@Environment(\.accessibilityReduceMotion)`).
+- Light and dark mode both, matching the PNGs.
+
+## Working style
+- One phase at a time. After each phase: build, run tests, list what changed, stop for review.
+- If docs and a PNG disagree: manifest wins, then doc 11. Ask Praba only product questions, in plain words.
+- PIN: minimum 6 digits, never allow 4. Optional 8+ or alphanumeric. Recovery key covers real vaults only, never the decoy. Decoy has its own PIN and keys and no recovery.
+- Do the Phase 0A security design documents before any vault code. Do not mark a security requirement complete without a passing reproducible test.
+- No claim of forensic erasure anywhere in code, copy or docs.
+- Devices: one universal app. Adaptive SwiftUI layouts only: size classes, no `UIScreen.main`, no fixed widths or device-model checks. iPad regular width uses a sidebar split view; sheets are centered. iPhone Duo open behaves like iPad, closed like iPhone; never require folding; keep state through a fold. Read `LAContext.biometryType` instead of hardcoding "Face ID". See doc 11 section 10 and `design/screens/10_iPad_and_Duo`.
+- iPhone Duo: build with Xcode 27.1 and the iOS 27.1 SDK or later. Use standard TabView, toolbars and NavigationSplitView so the vertical bar and sidebars move on their own; every tab needs a title and an icon. Handle each safe-area edge separately. Posture changes must not reload content or lose scroll position. See `design/screens/11_iPhone_Duo`.
