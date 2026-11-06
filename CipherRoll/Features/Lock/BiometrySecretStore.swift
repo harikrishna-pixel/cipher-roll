@@ -25,11 +25,10 @@ final class KeychainBiometryStore: BiometrySecretStoring {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecAttrAccessControl as String: access,
-            kSecAttrAccessGroup as String: AppGroupStore.keychainAccessGroup,
             kSecAttrSynchronizable as String: false,
             kSecValueData as String: LockSecretCodec.encode(secret)
         ]
-        let status = SecItemAdd(query as CFDictionary, nil)
+        let status = KeychainWork.onMain { SecItemAdd(query as CFDictionary, nil) }
         guard status == errSecSuccess else { throw VaultError.wrapFailed }
     }
 
@@ -38,13 +37,14 @@ final class KeychainBiometryStore: BiometrySecretStoring {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: AppGroupStore.keychainAccessGroup,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationContext as String: context
         ]
         var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = KeychainWork.onMain {
+            SecItemCopyMatching(query as CFDictionary, &result)
+        }
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let data = result as? Data else { throw VaultError.wrapFailed }
         return try LockSecretCodec.decode(data)
@@ -54,10 +54,9 @@ final class KeychainBiometryStore: BiometrySecretStoring {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: AppGroupStore.keychainAccessGroup
+            kSecAttrAccount as String: account
         ]
-        let status = SecItemDelete(query as CFDictionary)
+        let status = KeychainWork.onMain { SecItemDelete(query as CFDictionary) }
         guard status == errSecSuccess || status == errSecItemNotFound else { throw VaultError.wrapFailed }
     }
 }

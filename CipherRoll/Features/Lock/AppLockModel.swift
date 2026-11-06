@@ -789,6 +789,8 @@ final class AppLockModel: ObservableObject {
             return LockCopy.savedKeyHint
         case .secretInvalid:
             return "Choose a different lock."
+        case .wrapFailed:
+            return "The vault could not be saved on this iPhone. Set a passcode in Settings, then try again."
         default:
             return "Something went wrong. Try again."
         }

@@ -59,6 +59,10 @@ final class SecureEnclaveBundleSealer: BundleSealing {
     }
 
     private func privateKey() throws -> SecKey {
+        try KeychainWork.valueOnMain { try self.loadOrCreateKey() }
+    }
+
+    private func loadOrCreateKey() throws -> SecKey {
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
@@ -93,9 +97,21 @@ final class SecureEnclaveBundleSealer: BundleSealing {
                 kSecAttrAccessControl as String: access
             ]
         ]
-        guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else {
-            throw VaultError.wrapFailed
+        if let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) {
+            return key
         }
-        return key
+        let code = error.map { CFErrorGetCode($0.takeRetainedValue()) } ?? 0
+        if code == errSecDuplicateItem {
+            SecItemDelete([
+                kSecClass as String: kSecClassKey,
+                kSecAttrApplicationTag as String: tag,
+                kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom
+            ] as CFDictionary)
+            error = nil
+            if let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) {
+                return key
+            }
+        }
+        throw VaultError.wrapFailed
     }
 }

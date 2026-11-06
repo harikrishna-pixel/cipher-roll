@@ -13,8 +13,6 @@ enum AppGroupDefaults {
 
 enum AppGroupStore {
     static let identifier = "group.com.marberx.photovault"
-    /// Team id plus the group. Matches the keychain-access-groups entitlement.
-    static let keychainAccessGroup = "5MWZCJ2Q4K.group.com.marberx.photovault"
 
     static var suite: UserDefaults {
         UserDefaults(suiteName: identifier) ?? .standard

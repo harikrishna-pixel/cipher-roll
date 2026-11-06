@@ -73,6 +73,7 @@ final class SecurityCoreTests: XCTestCase {
         let accessible = query[kSecAttrAccessible as String] as AnyObject
         XCTAssertTrue(CFEqual(accessible, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly))
         XCTAssertEqual(query[kSecAttrSynchronizable as String] as? Bool, false)
+        XCTAssertNil(query[kSecAttrAccessGroup as String])
     }
 
     func testRefusesVaultWhenNoPasscode() {
