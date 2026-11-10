@@ -26,6 +26,14 @@ final class SecureEnclaveBundleSealer: BundleSealing {
     private let tag = Data("app.cipherroll.enclave.wrap".utf8)
 
     func seal(_ plaintext: Data) throws -> Data {
+        try KeychainWork.valueOnMain { try self.sealOnMain(plaintext) }
+    }
+
+    func open(_ sealed: Data) throws -> Data {
+        try KeychainWork.valueOnMain { try self.openOnMain(sealed) }
+    }
+
+    private func sealOnMain(_ plaintext: Data) throws -> Data {
         let publicKey = try publicKey()
         var error: Unmanaged<CFError>?
         guard let sealed = SecKeyCreateEncryptedData(
@@ -39,7 +47,7 @@ final class SecureEnclaveBundleSealer: BundleSealing {
         return sealed as Data
     }
 
-    func open(_ sealed: Data) throws -> Data {
+    private func openOnMain(_ sealed: Data) throws -> Data {
         let privateKey = try privateKey()
         var error: Unmanaged<CFError>?
         guard let plain = SecKeyCreateDecryptedData(
@@ -59,7 +67,7 @@ final class SecureEnclaveBundleSealer: BundleSealing {
     }
 
     private func privateKey() throws -> SecKey {
-        try KeychainWork.valueOnMain { try self.loadOrCreateKey() }
+        try loadOrCreateKey()
     }
 
     private func loadOrCreateKey() throws -> SecKey {

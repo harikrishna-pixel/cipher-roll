@@ -209,6 +209,14 @@ struct RootView: View {
         }
     }
 
+    private var testingSoftLockSkip: (() -> Void)? {
+        #if DEBUG
+        model.skipSoftLockForTesting
+        #else
+        nil
+        #endif
+    }
+
     @ViewBuilder
     private var locked: some View {
         if model.biometryOn && !model.showSecretLock {
@@ -234,7 +242,8 @@ struct RootView: View {
                         onDelete: model.deleteDigit,
                         onBiometry: model.retryBiometry,
                         onRecovery: model.beginRecoveryUnlock,
-                        onUnlock: model.unlockPin
+                        onUnlock: model.unlockPin,
+                        onTestingSkip: testingSoftLockSkip
                     )
                 }
             case .pattern:

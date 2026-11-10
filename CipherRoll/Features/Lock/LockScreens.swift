@@ -416,15 +416,22 @@ struct PinLockView: View {
     var onBiometry: () -> Void
     var onRecovery: () -> Void
     var onUnlock: () -> Void = {}
+    var onTestingSkip: (() -> Void)? = nil
 
     var body: some View {
         CipherScreen {
             VStack(spacing: CipherSpace.s12) {
                 Spacer(minLength: CipherSpace.s24)
-                CipherIcon.lock.image
-                    .foregroundStyle(CipherColor.gold)
-                    .frame(width: 64, height: 64)
-                    .background(CipherColor.hero, in: RoundedRectangle(cornerRadius: 18))
+                Group {
+                    if let onTestingSkip {
+                        Button(action: onTestingSkip) {
+                            lockMark
+                        }
+                        .accessibilityLabel("Skip soft lock")
+                    } else {
+                        lockMark
+                    }
+                }
                 Text("Personal")
                     .font(CipherFont.titleSmall)
                     .foregroundStyle(CipherColor.ink)
@@ -446,6 +453,13 @@ struct PinLockView: View {
             }
             .padding(CipherSpace.s20)
         }
+    }
+
+    private var lockMark: some View {
+        CipherIcon.lock.image
+            .foregroundStyle(CipherColor.gold)
+            .frame(width: 64, height: 64)
+            .background(CipherColor.hero, in: RoundedRectangle(cornerRadius: 18))
     }
 }
 

@@ -540,6 +540,14 @@ final class AppLockModel: ObservableObject {
     }
 
     func lockFromInside() {
+        #if DEBUG
+        // Soft lock for testing only: keep the session so the lock icon can skip back in.
+        clearEntry()
+        route = .locked
+        showSecretLock = true
+        biometryStarted = false
+        faceFailures = 0
+        #else
         session?.lock()
         session = nil
         clearEntry()
@@ -547,7 +555,17 @@ final class AppLockModel: ObservableObject {
         showSecretLock = !biometryOn
         biometryStarted = false
         faceFailures = 0
+        #endif
     }
+
+    #if DEBUG
+    func skipSoftLockForTesting() {
+        guard session != nil else { return }
+        clearEntry()
+        message = nil
+        route = .unlocked
+    }
+    #endif
 
     var secretEntryTitle: String {
         if step == .confirmSecret {
