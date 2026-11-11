@@ -12,6 +12,8 @@ final class AppLockModel: ObservableObject {
     @Published var lockKind: LockKind = .pin
     @Published var biometryOn = false
     @Published var cameFromChooser = false
+    /// True when Choose lock was opened from Create PIN → Other options.
+    private var chooseCameFromPinOptions = false
     @Published var pin = ""
     @Published var phrase = ""
     @Published var password = ""
@@ -84,7 +86,17 @@ final class AppLockModel: ObservableObject {
     }
 
     func continueFromDemo() { step = .privateQuestion }
-    func skipDemo() { step = .privateQuestion }
+    func skipDemo() {
+        // Skip welcome + questions; go straight to Create PIN with Face ID path defaults.
+        unlockChoice = .biometry
+        lockKind = .pin
+        biometryOn = true
+        cameFromChooser = false
+        chooseCameFromPinOptions = false
+        clearEntry()
+        step = .enterSecret
+        analytics.track("onboarding_step_viewed", properties: ["step": "create_pin", "via": "skip"])
+    }
 
     func continueFromPrivateQuestion() {
         guard goal != nil else {
@@ -119,6 +131,12 @@ final class AppLockModel: ObservableObject {
                 analytics.track("permission_result", properties: ["type": "photos_delete_originals", "result": result])
             }
         }
+        step = .firstLock
+        analytics.track("onboarding_step_viewed", properties: ["step": "first_lock"])
+    }
+
+    func continueFromFirstLock() {
+        chooseCameFromPinOptions = false
         switch unlockChoice {
         case .biometry:
             lockKind = .pin
@@ -135,6 +153,12 @@ final class AppLockModel: ObservableObject {
             cameFromChooser = true
             step = .choose
         }
+    }
+
+    func openOtherLockOptions() {
+        cameFromChooser = true
+        chooseCameFromPinOptions = true
+        step = .choose
     }
 
     func selectKind(_ kind: LockKind) {
@@ -203,25 +227,27 @@ final class AppLockModel: ObservableObject {
         create(secret: .pin(pin))
     }
 
-    func submitPattern() {
-        guard PatternDraft.canSubmit(pattern) else {
+    func submitPattern(_ drawn: [Int]? = nil) {
+        let current = drawn ?? pattern
+        pattern = current
+        guard PatternDraft.canSubmit(current) else {
             message = LockCopy.patternHint
             pattern = []
             return
         }
         message = nil
         if step == .enterSecret {
-            confirmSecret = .pattern(pattern)
+            confirmSecret = .pattern(current)
             pattern = []
             step = .confirmSecret
             return
         }
-        guard case .pattern(let expected) = confirmSecret, expected == pattern else {
+        guard case .pattern(let expected) = confirmSecret, expected == current else {
             pattern = []
             message = "Patterns did not match. Draw it again."
             return
         }
-        create(secret: .pattern(pattern))
+        create(secret: .pattern(current))
     }
 
     func submitPhraseConfirmation() {
@@ -261,11 +287,20 @@ final class AppLockModel: ObservableObject {
             step = .privateQuestion
         case .photos:
             step = .unlockQuestion
-        case .choose:
+        case .firstLock:
             step = .photos
+        case .choose:
+            if chooseCameFromPinOptions {
+                chooseCameFromPinOptions = false
+                lockKind = .pin
+                clearEntry()
+                step = .enterSecret
+            } else {
+                step = .firstLock
+            }
         case .enterSecret:
             clearEntry()
-            step = cameFromChooser ? .choose : .photos
+            step = cameFromChooser ? .choose : .firstLock
         case .confirmSecret:
             clearEntry()
             if lockKind == .phrase || lockKind == .password {
@@ -274,7 +309,7 @@ final class AppLockModel: ObservableObject {
             } else {
                 step = .enterSecret
             }
-        case .faceOffer, .recovery:
+        case .onboardingImport, .faceOffer, .recovery:
             break
         case .recoveryTest:
             if recoveryPurpose == .replaceLock {
@@ -464,17 +499,25 @@ final class AppLockModel: ObservableObject {
     }
 
     func unlockPin() {
+        #if DEBUG
+        if session != nil {
+            skipSoftLockForTesting()
+            return
+        }
+        #endif
         guard PinDraft.canContinue(pin), let vaultID else { return }
         unlock(.pin(pin), vault: vaultID, method: "secret")
     }
 
-    func unlockPattern() {
-        guard PatternDraft.canSubmit(pattern), let vaultID else {
+    func unlockPattern(_ drawn: [Int]? = nil) {
+        let current = drawn ?? pattern
+        pattern = current
+        guard PatternDraft.canSubmit(current), let vaultID else {
             message = LockCopy.patternHint
             pattern = []
             return
         }
-        unlock(.pattern(pattern), vault: vaultID, method: "secret")
+        unlock(.pattern(current), vault: vaultID, method: "secret")
     }
 
     func unlockPhrase() {
@@ -540,14 +583,6 @@ final class AppLockModel: ObservableObject {
     }
 
     func lockFromInside() {
-        #if DEBUG
-        // Soft lock for testing only: keep the session so the lock icon can skip back in.
-        clearEntry()
-        route = .locked
-        showSecretLock = true
-        biometryStarted = false
-        faceFailures = 0
-        #else
         session?.lock()
         session = nil
         clearEntry()
@@ -555,10 +590,18 @@ final class AppLockModel: ObservableObject {
         showSecretLock = !biometryOn
         biometryStarted = false
         faceFailures = 0
-        #endif
     }
 
     #if DEBUG
+    /// Testing only: cover the vault UI without wiping the session, so the lock icon can skip back in.
+    func softLockForTesting() {
+        clearEntry()
+        route = .locked
+        showSecretLock = true
+        biometryStarted = false
+        faceFailures = 0
+    }
+
     func skipSoftLockForTesting() {
         guard session != nil else { return }
         clearEntry()
@@ -620,44 +663,69 @@ final class AppLockModel: ObservableObject {
         showSecretLock = !biometryOn
     }
 
+    func finishOnboardingImport() {
+        analytics.track("onboarding_step_viewed", properties: ["step": "import_done"])
+        if biometryOn {
+            step = .faceOffer
+            analytics.track("onboarding_step_viewed", properties: ["step": "face_id_offer"])
+        } else {
+            firstSecret = nil
+            if recoveryWords.isEmpty {
+                route = .unlocked
+            } else {
+                step = .recovery
+            }
+        }
+    }
+
     private func create(secret: LockSecret) {
         guard !busy else { return }
         busy = true
         message = nil
-        DispatchQueue.global(qos: .userInitiated).async { [vault] in
+        // Secure Enclave / Keychain wrapping must stay on the main thread on device.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             do {
-                let created = try vault.createVault(secret: secret, role: .real)
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.busy = false
-                    self.vaultID = created.id
-                    self.firstSecret = secret
-                    self.recoveryWords = created.recoveryWords ?? []
-                    self.recoveryTested = false
-                    self.defaults.set(self.lockKind.rawValue, forKey: self.preferencesKind)
-                    self.clearEntry()
-                    self.analytics.track("lock_type_set", properties: [
-                        "lock_type": self.lockKind.analyticsValue,
-                        "face_id_on": self.biometryOn ? "true" : "false"
-                    ])
-                    if let words = created.recoveryWords, !words.isEmpty {
-                        self.analytics.track("recovery_key_created", properties: [:])
-                    }
-                    if self.biometryOn {
-                        self.step = .faceOffer
-                        self.analytics.track("onboarding_step_viewed", properties: ["step": "face_id_offer"])
-                    } else {
-                        self.firstSecret = nil
-                        self.step = self.recoveryWords.isEmpty ? .demo : .recovery
-                        if self.recoveryWords.isEmpty { self.route = .locked }
-                    }
+                let created = try self.vault.createVault(secret: secret, role: .real)
+                self.vaultID = created.id
+                self.firstSecret = secret
+                self.recoveryWords = created.recoveryWords ?? []
+                self.recoveryTested = false
+                self.defaults.set(self.lockKind.rawValue, forKey: self.preferencesKind)
+                self.analytics.track("lock_type_set", properties: [
+                    "lock_type": self.lockKind.analyticsValue,
+                    "face_id_on": self.biometryOn ? "true" : "false"
+                ])
+                if let words = created.recoveryWords, !words.isEmpty {
+                    self.analytics.track("recovery_key_created", properties: [:])
                 }
+                // Leave the confirm screen before clearing digits / dropping the busy cover
+                // so the UI does not flash an empty PIN pad.
+                do {
+                    let opened = try self.vault.unlock(activeVault: created.id, secret: secret)
+                    self.session = opened
+                    self.step = .onboardingImport
+                    self.analytics.track("onboarding_step_viewed", properties: ["step": "import"])
+                } catch {
+                    self.continueAfterCreateWithoutImport()
+                }
+                self.clearEntry()
+                self.busy = false
             } catch {
-                DispatchQueue.main.async { [weak self] in
-                    self?.busy = false
-                    self?.message = self?.friendly(error)
-                }
+                self.busy = false
+                self.message = self.friendly(error)
             }
+        }
+    }
+
+    private func continueAfterCreateWithoutImport() {
+        if biometryOn {
+            step = .faceOffer
+            analytics.track("onboarding_step_viewed", properties: ["step": "face_id_offer"])
+        } else {
+            firstSecret = nil
+            step = recoveryWords.isEmpty ? .demo : .recovery
+            if recoveryWords.isEmpty { route = .locked }
         }
     }
 

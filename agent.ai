@@ -1,0 +1,111 @@
+# AGENTS.md – Strict Development Rules
+
+## 1. Most Important Rule: Do Not Break Existing Functionality
+
+**STRICTLY FOLLOW THESE RULES THROUGHOUT THE PROJECT.**
+
+- Do not modify existing functionality unless explicitly required by the assigned task.
+- Do not change existing business logic.
+- Do not change existing application flow or navigation.
+- Do not change existing API contracts, request/response formats or database structures.
+- Do not modify existing authentication, authorization or security logic.
+- Do not change existing UI designs, layouts, styles or themes unless explicitly requested.
+- Do not remove, rename or restructure existing files, classes, methods, functions or variables unnecessarily.
+- Do not replace existing implementations with different approaches just because you prefer them.
+- Do not introduce unnecessary dependencies or packages.
+- Do not perform unrelated refactoring or code cleanup.
+
+## 2. Preserve Existing Logic
+
+- Existing logic must remain unchanged.
+- Existing functionality must continue working exactly as before.
+- When fixing a bug, make the smallest possible change.
+- Do not rewrite entire files when a targeted modification is sufficient.
+- Reuse existing services, utilities, methods and architectural patterns.
+- Maintain backward compatibility.
+- Preserve existing database records and user data.
+- Never introduce breaking changes without explicit approval.
+
+## 3. Bug Detection and Fixing
+
+When analyzing the project:
+
+1. Inspect the existing implementation before making changes.
+2. Identify actual bugs, not hypothetical issues.
+3. Understand the root cause before attempting a fix.
+4. Check whether the issue is already handled elsewhere.
+5. Identify the exact files and methods that require modification.
+6. Propose the smallest safe fix.
+7. Verify that the fix does not affect unrelated functionality.
+8. Run relevant tests and builds.
+
+Do not make changes simply because you believe the existing implementation could be improved.
+
+## 4. Trello Integration Rules
+
+When working with Trello:
+
+- Read the existing project board before creating new cards.
+- Do not duplicate existing bug reports.
+- Create cards only for genuine, identifiable issues.
+- Include the issue description, affected functionality, severity and reproduction steps where available.
+- Link each bug card to the relevant implementation details.
+- Do not mark a task as completed until the fix has been implemented and verified.
+- Do not delete or modify existing Trello cards unnecessarily.
+
+## 5. Before Modifying Any Code
+
+Before every implementation:
+
+1. Explain the identified issue.
+2. Identify the affected files.
+3. Explain why the proposed change is necessary.
+4. Confirm that existing functionality will remain unaffected.
+5. Make only the changes required to resolve the issue.
+
+If a change requires modifying existing business logic, architecture, database schema, API contracts or other unrelated functionality, STOP and request my approval first.
+
+## 6. Testing and Verification
+
+After implementation:
+
+- Run relevant unit tests.
+- Run relevant integration tests where available.
+- Run the application build.
+- Check for regressions in related functionality.
+- Verify that existing workflows remain functional.
+- Report any tests that could not be executed.
+
+Never claim that a bug is fixed without verification.
+
+## 7. Reporting Requirements
+
+For every task, report:
+
+- Bug or issue identified.
+- Root cause.
+- Files modified.
+- Exact changes made.
+- Existing functionality preserved.
+- Tests executed and their results.
+- Remaining issues or limitations.
+
+Clearly distinguish between implemented, tested and verified work.
+
+## 8. Strict Final Instructions
+
+**DO NOT CHANGE ANY OTHER THINGS.**
+
+**EXISTING LOGIC MUST REMAIN UNCHANGED.**
+
+**DO NOT MODIFY UNRELATED FUNCTIONALITY.**
+
+**DO NOT REFACTOR EXISTING CODE WITHOUT EXPLICIT APPROVAL.**
+
+**DO NOT DELETE OR REPLACE WORKING IMPLEMENTATIONS.**
+
+**MAKE ONLY THE MINIMUM CHANGES REQUIRED FOR THE SPECIFIC TASK.**
+
+If you are uncertain whether a change could affect existing functionality, do not make that change. Ask for approval first.
+
+These rules take priority over convenience, optimization and personal coding preferences.

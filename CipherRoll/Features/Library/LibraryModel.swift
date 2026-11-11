@@ -4,10 +4,11 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-struct ImportRow: Identifiable, Equatable {
+struct ImportRow: Identifiable {
     var id = UUID()
     var name: String
     var state: State
+    var thumb: UIImage? = nil
 
     enum State: Equatable {
         case waiting
@@ -260,7 +261,9 @@ final class LibraryModel: ObservableObject {
         cancelImport = false
         importedCount = 0
         importTotal = batch.count
-        rows = batch.map { ImportRow(name: $0.name, state: .waiting) }
+        rows = batch.map { file in
+            ImportRow(name: file.name, state: .waiting, thumb: Self.makeThumb(from: file.data, kind: file.kind))
+        }
         deletableAssetIDs = []
         importScreen = .progress
         analytics.track("import_started", properties: [
@@ -325,7 +328,7 @@ final class LibraryModel: ObservableObject {
                 break
             }
             DispatchQueue.main.async { [weak self] in
-                self?.rows[index].state = .working(0.4)
+                self?.rows[index].state = .working(0.6)
             }
             let available = try? FileManager.default.url(
                 for: .libraryDirectory,
@@ -396,6 +399,18 @@ struct PendingImport: Identifiable {
     var kind: ItemKind
     var data: Data
     var assetID: String?
+}
+
+private extension LibraryModel {
+    static func makeThumb(from data: Data, kind: ItemKind) -> UIImage? {
+        guard kind == .photo || kind == .video else { return nil }
+        guard let image = UIImage(data: data) else { return nil }
+        let size = CGSize(width: 88, height: 88)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
 }
 
 enum PendingImportLoader {

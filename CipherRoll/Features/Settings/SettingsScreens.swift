@@ -1,4 +1,6 @@
+import AVFoundation
 import SwiftUI
+import UIKit
 
 struct ConsentScreen: View {
     var onAllow: () -> Void
@@ -62,7 +64,9 @@ struct SettingsHome: View {
     var onDecoy: () -> Void
     var onRestore: () -> Void
     var onManage: () -> Void
+    var restoring: Bool = false
     var onLock: () -> Void
+    var onBack: (() -> Void)? = nil
     var onHelp: () -> Void = {}
     var onInvite: () -> Void = {}
     var onMoreApps: () -> Void = {}
@@ -74,7 +78,13 @@ struct SettingsHome: View {
         CipherScreen {
             ScrollView {
                 VStack(alignment: .leading, spacing: CipherSpace.s16) {
-                    Text("Settings").font(CipherFont.title).foregroundStyle(CipherColor.ink)
+                    HStack {
+                        if let onBack {
+                            CipherBackButton(action: onBack)
+                        }
+                        Text("Settings").font(CipherFont.title).foregroundStyle(CipherColor.ink)
+                        Spacer(minLength: 0)
+                    }
                     if let message = settings.message {
                         Text(message).font(CipherFont.caption).foregroundStyle(CipherColor.sub)
                     }
@@ -95,8 +105,8 @@ struct SettingsHome: View {
                         row("Export all items", "", onExport)
                     }
                     section("Plan and support") {
-                        row("Restore purchases", "", onRestore)
-                        row("Manage subscription", "", onManage)
+                        busyRow("Restore purchases", restoring, onRestore)
+                        busyRow("Manage subscription", restoring, onManage)
                         row("Privacy and lock", "", onPrivacy)
                         row("Help", "", onHelp)
                         row("Invite a friend", "", onInvite)
@@ -151,6 +161,50 @@ struct SettingsHome: View {
             .frame(minHeight: 52)
         }
         .buttonStyle(.plain)
+    }
+
+    private func busyRow(_ title: String, _ busy: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title).font(CipherFont.button).foregroundStyle(CipherColor.ink)
+                Spacer()
+                if busy {
+                    ProgressView()
+                        .accessibilityLabel("Working")
+                } else {
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundStyle(CipherColor.sub)
+                }
+            }
+            .padding(.horizontal, CipherSpace.s16)
+            .frame(minHeight: 52)
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+    }
+}
+
+struct RecoveryKeySheet: View {
+    var onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CipherSpace.s16) {
+            Text("Recovery key").font(CipherFont.h2).foregroundStyle(CipherColor.ink)
+            Text("Verified")
+                .font(CipherFont.caption)
+                .foregroundStyle(CipherColor.tintInk)
+                .padding(.horizontal, 10)
+                .frame(minHeight: 28)
+                .background(CipherColor.tint, in: Capsule())
+            Text("Your recovery key was saved when this vault was created. It covers the real vault only — never a decoy.")
+                .font(CipherFont.body)
+                .foregroundStyle(CipherColor.sub)
+            Text("Keep the written key somewhere safe. CipherRoll cannot show the words again after setup.")
+                .font(CipherFont.body)
+                .foregroundStyle(CipherColor.sub)
+            Button("Done", action: onClose).buttonStyle(CipherGoldButtonStyle())
+        }
+        .padding(CipherSpace.s24)
+        .presentationDetents([.medium])
     }
 }
 
@@ -297,13 +351,20 @@ struct DecoySetupScreen: View {
     var onDelete: () -> Void
     var onCreate: () -> Void
     var onPlan: () -> Void
+    @State private var enteringPIN = false
 
     var body: some View {
         CipherScreen {
             ScrollView {
                 VStack(alignment: .leading, spacing: CipherSpace.s16) {
                     HStack {
-                        CipherBackButton(action: onBack)
+                        CipherBackButton(action: {
+                            if enteringPIN {
+                                enteringPIN = false
+                            } else {
+                                onBack()
+                            }
+                        })
                         Spacer()
                         Text("Decoy vault").font(CipherFont.button).foregroundStyle(CipherColor.ink)
                         Spacer()
@@ -314,35 +375,100 @@ struct DecoySetupScreen: View {
                             .frame(minHeight: 28)
                             .background(CipherColor.gold, in: Capsule())
                     }
-                    Text(SettingsCopy.decoyTitle).font(CipherFont.title).foregroundStyle(CipherColor.ink)
-                    Text(SettingsCopy.decoySubtitle).font(CipherFont.body).foregroundStyle(CipherColor.sub)
-                    point(SettingsCopy.decoyOwn)
-                    point(SettingsCopy.decoyPro)
-                    point(SettingsCopy.decoyForgotten)
-                    Text("Personal · \(ItemCountCopy.label(itemCount))").font(CipherFont.caption).foregroundStyle(CipherColor.sub)
-                    Text(SettingsCopy.decoyPINDetail).font(CipherFont.caption).foregroundStyle(CipherColor.sub)
-                    pinDots
-                    if let message {
-                        Text(message).font(CipherFont.caption).foregroundStyle(CipherColor.danger)
+                    if enteringPIN {
+                        pinStep
+                    } else {
+                        intro
                     }
-                    digitPad
-                    Button(needsPlan ? "See plans" : "Create decoy vault", action: needsPlan ? onPlan : onCreate)
-                        .buttonStyle(CipherGoldButtonStyle())
-                        .disabled(!needsPlan && !PinDraft.canContinue(pin))
                 }
                 .padding(CipherSpace.s20)
             }
         }
     }
 
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: CipherSpace.s16) {
+            Text(SettingsCopy.decoyTitle).font(CipherFont.title).foregroundStyle(CipherColor.ink)
+            Text(SettingsCopy.decoySubtitle).font(CipherFont.body).foregroundStyle(CipherColor.sub)
+            vaultCard(
+                title: "Your PIN opens",
+                detail: "Personal",
+                count: ItemCountCopy.label(itemCount),
+                selected: true
+            )
+            vaultCard(
+                title: "Decoy PIN opens",
+                detail: "Holiday",
+                count: "8 harmless items",
+                selected: false
+            )
+            point(SettingsCopy.decoyOwn)
+            point(SettingsCopy.decoyPro)
+            point(SettingsCopy.decoyForgotten)
+            Button(needsPlan ? "See plans" : "Create decoy vault") {
+                if needsPlan {
+                    onPlan()
+                } else {
+                    enteringPIN = true
+                }
+            }
+            .buttonStyle(CipherGoldButtonStyle())
+        }
+    }
+
+    private var pinStep: some View {
+        VStack(alignment: .leading, spacing: CipherSpace.s16) {
+            Text("Choose a decoy PIN").font(CipherFont.title).foregroundStyle(CipherColor.ink)
+            Text(SettingsCopy.decoyPINDetail).font(CipherFont.body).foregroundStyle(CipherColor.sub)
+            pinDots
+            if let message {
+                Text(message).font(CipherFont.caption).foregroundStyle(CipherColor.danger)
+            }
+            digitPad
+            Button("Create decoy vault", action: onCreate)
+                .buttonStyle(CipherGoldButtonStyle())
+                .disabled(!PinDraft.canContinue(pin))
+                .opacity(PinDraft.canContinue(pin) ? 1 : 0.45)
+        }
+    }
+
+    private func vaultCard(title: String, detail: String, count: String, selected: Bool) -> some View {
+        HStack(spacing: CipherSpace.s12) {
+            CipherIcon.lock.image
+                .foregroundStyle(CipherColor.tintInk)
+                .frame(width: 40, height: 40)
+                .background(CipherColor.tint, in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: CipherSpace.s4) {
+                Text(title).font(CipherFont.caption).foregroundStyle(CipherColor.sub)
+                HStack(spacing: 6) {
+                    ForEach(0..<6, id: \.self) { _ in
+                        Circle().fill(CipherColor.ink).frame(width: 8, height: 8)
+                    }
+                }
+                .accessibilityHidden(true)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(detail).font(CipherFont.button).foregroundStyle(CipherColor.ink)
+                Text(count).font(CipherFont.caption).foregroundStyle(CipherColor.sub)
+            }
+        }
+        .padding(CipherSpace.s16)
+        .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: CipherRadius.card)
+                .stroke(selected ? CipherColor.ink : CipherColor.line, lineWidth: selected ? 1.5 : 1)
+        )
+    }
+
     private var pinDots: some View {
         HStack(spacing: 8) {
-            ForEach(0..<max(pin.count, 6), id: \.self) { index in
+            ForEach(0..<6, id: \.self) { index in
                 Circle().fill(index < pin.count ? CipherColor.ink : CipherColor.line).frame(width: 12, height: 12)
             }
         }
         .frame(maxWidth: .infinity)
-        .accessibilityLabel("\(pin.count) digits")
+        .accessibilityLabel("\(min(pin.count, 6)) of 6 digits")
     }
 
     private var digitPad: some View {
@@ -352,7 +478,11 @@ struct DecoySetupScreen: View {
                 HStack(spacing: 8) {
                     ForEach(row, id: \.self) { key in
                         Button(key == "del" ? "Delete" : key) {
-                            if key == "del" { onDelete() } else if !key.isEmpty { onDigit(key) }
+                            if key == "del" {
+                                onDelete()
+                            } else if !key.isEmpty, pin.count < 6 {
+                                onDigit(key)
+                            }
                         }
                         .font(CipherFont.button)
                         .foregroundStyle(CipherColor.ink)
@@ -367,7 +497,7 @@ struct DecoySetupScreen: View {
 
     private func point(_ text: String) -> some View {
         HStack(alignment: .top, spacing: CipherSpace.s8) {
-            Image(systemName: "checkmark").foregroundStyle(CipherColor.tintInk)
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(CipherColor.tintInk)
             Text(text).font(CipherFont.body).foregroundStyle(CipherColor.ink)
         }
     }
@@ -376,6 +506,7 @@ struct DecoySetupScreen: View {
 struct SelfieScreen: View {
     @ObservedObject var settings: SettingsModel
     var onBack: () -> Void
+    @State private var cameraMessage: String?
 
     var body: some View {
         CipherScreen {
@@ -392,6 +523,14 @@ struct SelfieScreen: View {
                     Text(SettingsCopy.selfieDetail).font(CipherFont.body).foregroundStyle(CipherColor.sub)
                     ForEach(settings.photos) { photo in
                         HStack {
+                            if let image = UIImage(contentsOfFile: photo.url.path) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 56, height: 56)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .accessibilityHidden(true)
+                            }
                             VStack(alignment: .leading) {
                                 Text("Failed attempt · \(photo.date.formatted(date: .abbreviated, time: .shortened))")
                                     .font(CipherFont.button).foregroundStyle(CipherColor.ink)
@@ -408,8 +547,16 @@ struct SelfieScreen: View {
                     point(SettingsCopy.selfieStays)
                     point(SettingsCopy.selfieSee)
                     point(SettingsCopy.selfieOff)
+                    if let cameraMessage {
+                        Text(cameraMessage).font(CipherFont.caption).foregroundStyle(CipherColor.danger)
+                    }
                     Button(settings.breakIn ? "Turn off" : "Allow camera access") {
-                        settings.setBreakIn(!settings.breakIn)
+                        if settings.breakIn {
+                            settings.setBreakIn(false)
+                            cameraMessage = nil
+                        } else {
+                            Task { await enableCamera() }
+                        }
                     }
                     .buttonStyle(CipherGoldButtonStyle())
                 }
@@ -417,6 +564,33 @@ struct SelfieScreen: View {
             }
         }
         .onAppear { settings.reloadPhotos() }
+    }
+
+    private func enableCamera() async {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            settings.setBreakIn(true)
+            cameraMessage = nil
+        case .notDetermined:
+            let ok = await AVCaptureDevice.requestAccess(for: .video)
+            await MainActor.run {
+                if ok {
+                    settings.setBreakIn(true)
+                    cameraMessage = nil
+                } else {
+                    cameraMessage = "Camera access was declined. Turn it on in Settings to use break-in selfie."
+                }
+            }
+        case .denied, .restricted:
+            await MainActor.run {
+                cameraMessage = "Camera access is off. Open iPhone Settings → CipherRoll → Camera to allow it."
+            }
+        @unknown default:
+            await MainActor.run {
+                cameraMessage = "Camera access is unavailable on this device."
+            }
+        }
     }
 
     private func point(_ text: String) -> some View {
@@ -543,7 +717,7 @@ struct RestoreNoneSheet: View {
                 .multilineTextAlignment(.center)
             Button("See plans", action: onPlans).buttonStyle(CipherGoldButtonStyle())
             Button("Try again", action: onRetry).buttonStyle(CipherOutlineButtonStyle())
-            Button("Close", action: onClose)
+            Button("Contact Support", action: onClose)
                 .font(CipherFont.button)
                 .foregroundStyle(CipherColor.link)
                 .frame(minHeight: 44)

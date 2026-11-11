@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PaywallScreen: View {
     @ObservedObject var plan: PlanModel
@@ -6,10 +7,19 @@ struct PaywallScreen: View {
 
     var body: some View {
         CipherScreen {
-            if plan.offline {
-                offline
-            } else {
-                offer
+            ZStack {
+                if plan.offline {
+                    offline
+                } else {
+                    offer
+                }
+                if plan.restoring {
+                    Color.black.opacity(0.18).ignoresSafeArea()
+                    ProgressView("Restoring…")
+                        .padding(CipherSpace.s20)
+                        .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
+                        .accessibilityLabel("Restoring purchases")
+                }
             }
         }
         .frame(maxWidth: 560)
@@ -21,6 +31,20 @@ struct PaywallScreen: View {
             Button("OK", role: .cancel) { plan.message = nil }
         } message: {
             Text(plan.message ?? "")
+        }
+        .sheet(isPresented: $plan.showRestoreNone) {
+            RestoreNoneSheet(onPlans: {
+                plan.showRestoreNone = false
+            }, onRetry: {
+                plan.showRestoreNone = false
+                Task { await plan.restore() }
+            }, onClose: {
+                plan.showRestoreNone = false
+                if let url = URL(string: "mailto:hello@marberx.com?subject=CipherRoll%20restore") {
+                    UIApplication.shared.open(url)
+                }
+            })
+            .cipherCenteredSheet()
         }
     }
 
@@ -112,7 +136,10 @@ struct PaywallScreen: View {
                 .multilineTextAlignment(.center)
             Spacer()
             Button("Try again") {
-                Task { await plan.refresh() }
+                Task {
+                    plan.offline = false
+                    await plan.refresh()
+                }
             }
             .buttonStyle(CipherGoldButtonStyle())
             Button("Continue with Free") { plan.close(.continueFree) }
@@ -188,8 +215,11 @@ struct PaywallScreen: View {
 
     private var links: some View {
         HStack(spacing: CipherSpace.s16) {
-            Button("Restore") { Task { await plan.restore() } }
-                .frame(minHeight: CipherA11y.minimumTarget)
+            Button(plan.restoring ? "Restoring…" : "Restore") {
+                Task { await plan.restore() }
+            }
+            .disabled(plan.restoring)
+            .frame(minHeight: CipherA11y.minimumTarget)
             Button("Terms") { plan.message = PaywallCopy.valueLine }
                 .frame(minHeight: CipherA11y.minimumTarget)
             Button("Privacy") { plan.message = "Vault contents stay on this iPhone. Apple handles the purchase. CipherRoll does not send vault contents." }

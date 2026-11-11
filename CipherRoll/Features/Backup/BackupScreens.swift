@@ -13,9 +13,16 @@ struct BackupExportScreen: View {
     @State private var showRepeated = false
     @State private var working = false
     @State private var message: String?
+    @State private var changeNote: String?
     @State private var ready: Ready?
     @State private var saveFile = false
+    @FocusState private var focusedField: Field?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private enum Field: Hashable {
+        case password
+        case repeated
+    }
 
     private var count: Int { library.activeItems.count }
     private var bytes: Int { library.activeItems.reduce(0) { $0 + $1.byteCount } }
@@ -50,8 +57,11 @@ struct BackupExportScreen: View {
                     .font(CipherFont.body)
                     .foregroundStyle(CipherColor.sub)
                 vaultCard
-                secretField("Backup password", text: $password, visible: $showPassword)
-                secretField("Repeat password", text: $repeated, visible: $showRepeated)
+                if let changeNote {
+                    Text(changeNote).font(CipherFont.caption).foregroundStyle(CipherColor.sub)
+                }
+                secretField("Backup password", text: $password, visible: $showPassword, field: .password)
+                secretField("Repeat password", text: $repeated, visible: $showRepeated, field: .repeated)
                 Text(BackupRules.passwordNote)
                     .font(CipherFont.caption)
                     .foregroundStyle(CipherColor.sub)
@@ -116,11 +126,13 @@ struct BackupExportScreen: View {
                     .foregroundStyle(CipherColor.sub)
             }
             Spacer()
-            Button("Change") {}
-                .font(CipherFont.button)
-                .foregroundStyle(CipherColor.link)
-                .frame(minHeight: CipherA11y.minimumTarget)
-                .accessibilityLabel("Change vault")
+            Button("Change") {
+                changeNote = "Only Personal can be exported right now. A decoy vault is never included in a backup."
+            }
+            .font(CipherFont.button)
+            .foregroundStyle(CipherColor.link)
+            .frame(minHeight: CipherA11y.minimumTarget)
+            .accessibilityLabel("Change vault")
         }
         .padding(CipherSpace.s16)
         .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
@@ -209,7 +221,7 @@ struct BackupExportScreen: View {
         .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
     }
 
-    private func secretField(_ title: String, text: Binding<String>, visible: Binding<Bool>) -> some View {
+    private func secretField(_ title: String, text: Binding<String>, visible: Binding<Bool>, field: Field) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: CipherSpace.s4) {
                 Text(title).font(CipherFont.caption).foregroundStyle(CipherColor.sub)
@@ -222,8 +234,14 @@ struct BackupExportScreen: View {
                 }
                 .font(CipherFont.body)
                 .foregroundStyle(CipherColor.ink)
+                .textContentType(.password)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($focusedField, equals: field)
+                .submitLabel(field == .password ? .next : .done)
+                .onSubmit {
+                    focusedField = field == .password ? .repeated : nil
+                }
             }
             Button {
                 visible.wrappedValue.toggle()
@@ -237,6 +255,8 @@ struct BackupExportScreen: View {
         .padding(.vertical, CipherSpace.s8)
         .frame(minHeight: 64)
         .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
+        .contentShape(Rectangle())
+        .onTapGesture { focusedField = field }
     }
 
     private struct Ready {

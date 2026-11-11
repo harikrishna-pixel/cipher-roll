@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 
 struct ImportContainer: View {
     @ObservedObject var library: LibraryModel
+    var isOnboarding = false
+    var onOnboardingFinished: (() -> Void)? = nil
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showPicker = false
     @State private var showFiles = false
@@ -12,18 +14,20 @@ struct ImportContainer: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        Group {
-            switch library.importScreen {
-            case .add, .none:
-                addSheet
-            case .overLimit(let kind, let selected, let allowed):
-                overLimit(kind: kind, selected: selected, allowed: allowed)
-            case .progress:
-                progress
-            case .paused(let imported, let waiting):
-                paused(imported: imported, waiting: waiting)
-            case .done(let count, let originals):
-                done(count: count, originals: originals)
+        CipherScreen {
+            Group {
+                switch library.importScreen {
+                case .add, .none:
+                    addSheet
+                case .overLimit(let kind, let selected, let allowed):
+                    overLimit(kind: kind, selected: selected, allowed: allowed)
+                case .progress:
+                    progress
+                case .paused(let imported, let waiting):
+                    paused(imported: imported, waiting: waiting)
+                case .done(let count, let originals):
+                    done(count: count, originals: originals)
+                }
             }
         }
         .photosPicker(isPresented: $showPicker, selection: $pickerItems, matching: .any(of: [.images, .videos]))
@@ -45,17 +49,30 @@ struct ImportContainer: View {
             guard !items.isEmpty else { return }
             Task { await loadPicker(items) }
         }
+        .onAppear {
+            if isOnboarding, library.importScreen == .add || library.importScreen == nil {
+                // Brief delay so the step change finishes before the sheet presents.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    showPicker = true
+                }
+            }
+        }
     }
 
     private var addSheet: some View {
         VStack(alignment: .leading, spacing: CipherSpace.s16) {
             HStack {
-                Button { library.importScreen = nil } label: {
+                Button {
+                    finishOnboardingIfNeeded()
+                    library.importScreen = nil
+                } label: {
                     Image(systemName: "xmark").frame(width: 44, height: 44).background(CipherColor.card, in: Circle())
                 }
-                .accessibilityLabel("Close")
+                .accessibilityLabel(isOnboarding ? "Skip" : "Close")
                 Spacer()
-                Text("Add to Personal").font(CipherFont.h2).foregroundStyle(CipherColor.ink)
+                Text(isOnboarding ? "Choose photos to lock" : "Add to Personal")
+                    .font(CipherFont.h2)
+                    .foregroundStyle(CipherColor.ink)
                 Spacer()
                 Color.clear.frame(width: 44, height: 44)
             }
@@ -114,28 +131,41 @@ struct ImportContainer: View {
     }
 
     private var progress: some View {
-        VStack(spacing: CipherSpace.s16) {
+        let total = max(library.importTotal, 1)
+        let fraction = CGFloat(library.importedCount) / CGFloat(total)
+        return VStack(spacing: CipherSpace.s16) {
             Text("Importing to Personal").font(CipherFont.h2).foregroundStyle(CipherColor.ink)
-            Text("\(library.importedCount) of \(library.importTotal)")
-                .font(CipherFont.title)
-                .foregroundStyle(CipherColor.ink)
-            Text("items locked").font(CipherFont.caption).foregroundStyle(CipherColor.sub)
+            ZStack {
+                Circle()
+                    .stroke(CipherColor.line, lineWidth: 10)
+                Circle()
+                    .trim(from: 0, to: max(fraction, 0.02))
+                    .stroke(CipherColor.ink, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 4) {
+                    Text("\(library.importedCount) of \(library.importTotal)")
+                        .font(CipherFont.title)
+                        .foregroundStyle(CipherColor.ink)
+                    Text("items locked")
+                        .font(CipherFont.caption)
+                        .foregroundStyle(CipherColor.sub)
+                }
+            }
+            .frame(width: 168, height: 168)
+            .accessibilityLabel("\(library.importedCount) of \(library.importTotal) items locked")
             Text("Keep CipherRoll open. Your originals stay in Photos until you choose.")
                 .font(CipherFont.body)
                 .foregroundStyle(CipherColor.sub)
                 .multilineTextAlignment(.center)
-            VStack(spacing: CipherSpace.s12) {
-                ForEach(library.rows.prefix(6)) { row in
-                    HStack {
-                        Text(row.name).font(CipherFont.caption).foregroundStyle(CipherColor.ink).lineLimit(3)
-                        Spacer()
-                        Text(label(row.state)).font(CipherFont.caption).foregroundStyle(CipherColor.sub)
-                    }
-                    .accessibilityElement(children: .combine)
+            VStack(spacing: 0) {
+                ForEach(Array(library.rows.prefix(6).enumerated()), id: \.element.id) { index, row in
+                    if index > 0 { Divider() }
+                    progressRow(row)
                 }
             }
-            .padding(CipherSpace.s16)
+            .padding(.horizontal, CipherSpace.s16)
             .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
+            .overlay(RoundedRectangle(cornerRadius: CipherRadius.card).stroke(CipherColor.line, lineWidth: 1))
             Spacer()
             Button("Cancel import") { library.cancelImportNow() }
                 .font(CipherFont.button)
@@ -143,6 +173,51 @@ struct ImportContainer: View {
                 .frame(minHeight: 44)
         }
         .padding(CipherSpace.s24)
+    }
+
+    private func progressRow(_ row: ImportRow) -> some View {
+        HStack(spacing: CipherSpace.s12) {
+            thumb(row.thumb)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(row.name)
+                    .font(CipherFont.button)
+                    .foregroundStyle(CipherColor.ink)
+                    .lineLimit(1)
+                if case .working(let value) = row.state {
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(CipherColor.line)
+                            Capsule().fill(CipherColor.ink).frame(width: proxy.size.width * CGFloat(value))
+                        }
+                    }
+                    .frame(height: 4)
+                }
+            }
+            Spacer(minLength: 8)
+            Text(label(row.state))
+                .font(CipherFont.caption)
+                .foregroundStyle(row.state == .locked ? CipherColor.ink : CipherColor.sub)
+        }
+        .padding(.vertical, CipherSpace.s12)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func thumb(_ image: UIImage?) -> some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                CipherIcon.image.image
+                    .foregroundStyle(CipherColor.tintInk)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(CipherColor.tint)
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .accessibilityHidden(true)
     }
 
     private func paused(imported: Int, waiting: Int) -> some View {
@@ -167,40 +242,75 @@ struct ImportContainer: View {
 
     private func done(count: Int, originals: Int) -> some View {
         VStack(spacing: CipherSpace.s16) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(CipherColor.onGold)
-                .frame(width: 72, height: 72)
-                .background(CipherColor.gold, in: Circle())
+            ZStack {
+                Circle().fill(CipherColor.card).frame(width: 96, height: 96)
+                Circle().fill(CipherColor.tint).frame(width: 64, height: 64)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(CipherColor.tintInk)
+            }
+            .accessibilityHidden(true)
             Text("\(count) items imported.")
                 .font(CipherFont.title)
                 .foregroundStyle(CipherColor.ink)
             Text("Locked in CipherRoll.")
                 .font(CipherFont.body)
                 .foregroundStyle(CipherColor.sub)
+            HStack(spacing: CipherSpace.s8) {
+                ForEach(Array(library.rows.prefix(4))) { row in
+                    thumb(row.thumb)
+                        .frame(width: 64, height: 64)
+                }
+            }
             if originals > 0 {
-                VStack(alignment: .leading, spacing: CipherSpace.s8) {
-                    Text("Delete \(originals) originals from Photos?")
+                VStack(alignment: .leading, spacing: CipherSpace.s12) {
+                    HStack(alignment: .top, spacing: CipherSpace.s12) {
+                        CipherIcon.image.image
+                            .foregroundStyle(CipherColor.tintInk)
+                            .frame(width: 40, height: 40)
+                            .background(CipherColor.tint, in: RoundedRectangle(cornerRadius: 10))
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: CipherSpace.s8) {
+                            Text("Delete \(originals) originals from Photos?")
+                                .font(CipherFont.button)
+                                .foregroundStyle(CipherColor.ink)
+                            Text("They are still in your camera roll. If you delete them, iOS keeps them in Recently Deleted for about 30 days. With iCloud Photos on, they are removed on your other devices too.")
+                                .font(CipherFont.caption)
+                                .foregroundStyle(CipherColor.sub)
+                        }
+                    }
+                    HStack(spacing: CipherSpace.s12) {
+                        Button("Review and delete") {
+                            library.deleteImportedOriginals()
+                            finishOnboardingIfNeeded()
+                        }
+                        .buttonStyle(CipherOutlineButtonStyle())
+                        Button("Keep originals") {
+                            library.keepOriginals()
+                            finishOnboardingIfNeeded()
+                        }
                         .font(CipherFont.button)
-                        .foregroundStyle(CipherColor.ink)
-                    Text("They are still in your camera roll. If you delete them, iOS keeps them in Recently Deleted for about 30 days. With iCloud Photos on, they are removed on your other devices too.")
-                        .font(CipherFont.caption)
-                        .foregroundStyle(CipherColor.sub)
-                    HStack {
-                        Button("Review and delete") { library.deleteImportedOriginals() }
-                            .buttonStyle(CipherOutlineButtonStyle())
-                        Button("Keep originals") { library.keepOriginals() }
-                            .font(CipherFont.button)
-                            .foregroundStyle(CipherColor.link)
+                        .foregroundStyle(CipherColor.link)
+                        .frame(minHeight: 44)
                     }
                 }
                 .padding(CipherSpace.s16)
                 .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
+                .overlay(RoundedRectangle(cornerRadius: CipherRadius.card).stroke(CipherColor.line, lineWidth: 1))
             }
             Spacer()
-            Button("Continue") { library.keepOriginals() }.buttonStyle(CipherGoldButtonStyle())
+            Button("Continue") {
+                library.keepOriginals()
+                finishOnboardingIfNeeded()
+            }
+            .buttonStyle(CipherGoldButtonStyle())
         }
         .padding(CipherSpace.s24)
+    }
+
+    private func finishOnboardingIfNeeded() {
+        guard isOnboarding else { return }
+        onOnboardingFinished?()
     }
 
     private func sourceButton(_ title: String, _ symbol: String, _ action: @escaping () -> Void) -> some View {
@@ -226,7 +336,7 @@ struct ImportContainer: View {
     private func label(_ state: ImportRow.State) -> String {
         switch state {
         case .waiting: "Waiting"
-        case .working: "Working"
+        case .working(let value): "\(Int((value * 100).rounded()))%"
         case .locked: "Locked"
         case .skipped: "Skipped"
         }
@@ -236,16 +346,41 @@ struct ImportContainer: View {
         var pending: [PendingImport] = []
         for item in items {
             if let movie = try? await item.loadTransferable(type: VideoFile.self),
-               let data = try? Data(contentsOf: movie.url) {
+               let data = try? Data(contentsOf: movie.url), !data.isEmpty {
                 pending.append(PendingImport(name: "Video.mov", kind: .video, data: data, assetID: item.itemIdentifier))
                 try? FileManager.default.removeItem(at: movie.url)
-            } else if let data = try? await item.loadTransferable(type: Data.self) {
+            } else if let photo = try? await item.loadTransferable(type: ImportPhoto.self), !photo.data.isEmpty {
+                pending.append(PendingImport(name: "Photo.jpg", kind: .photo, data: photo.data, assetID: item.itemIdentifier))
+            } else if let data = try? await item.loadTransferable(type: Data.self), !data.isEmpty {
                 pending.append(PendingImport(name: "Photo.jpg", kind: .photo, data: data, assetID: item.itemIdentifier))
             }
         }
         pickerItems = []
-        let kind: ItemKind = pending.allSatisfy { $0.kind == .video } && !pending.isEmpty ? .video : .photo
+        guard !pending.isEmpty else {
+            library.message = "Those photos could not be imported. Try again."
+            return
+        }
+        let kind: ItemKind = pending.allSatisfy { $0.kind == .video } ? .video : .photo
         library.prepare(files: pending, kind: kind)
+    }
+}
+
+struct ImportPhoto: Transferable {
+    let data: Data
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(importedContentType: .image) { data in
+            ImportPhoto(data: data)
+        }
+        DataRepresentation(importedContentType: .jpeg) { data in
+            ImportPhoto(data: data)
+        }
+        DataRepresentation(importedContentType: .png) { data in
+            ImportPhoto(data: data)
+        }
+        DataRepresentation(importedContentType: .heic) { data in
+            ImportPhoto(data: data)
+        }
     }
 }
 

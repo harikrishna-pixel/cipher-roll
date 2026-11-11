@@ -54,6 +54,7 @@ struct CipherPageDots: View {
                     .frame(width: item == index ? 18 : 6, height: 6)
             }
         }
+        .frame(maxWidth: .infinity)
         .accessibilityLabel("Step \(index + 1) of \(count)")
     }
 

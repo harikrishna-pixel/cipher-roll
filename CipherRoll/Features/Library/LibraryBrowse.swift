@@ -70,9 +70,11 @@ struct ItemGridView: View {
                     Text("Personal · \(ItemCountCopy.label(shown.count))").font(CipherFont.caption).foregroundStyle(CipherColor.sub)
                 }
                 Spacer()
-                Button("Select") { library.selecting = true }
-                    .font(CipherFont.button)
-                    .frame(minHeight: 44)
+                if !shown.isEmpty {
+                    Button("Select") { library.selecting = true }
+                        .font(CipherFont.button)
+                        .frame(minHeight: 44)
+                }
                 Menu {
                     Button("Export all") { exportAll() }
                     Button("Albums") { path.append(.albums(kind)) }
@@ -373,9 +375,17 @@ struct ItemViewer: View {
         .onAppear {
             guard item?.kind == .video else { return }
             videoURL = library.videoURL(id)
-            if let videoURL { player = AVPlayer(url: videoURL) }
+            if let videoURL {
+                let next = AVPlayer(url: videoURL)
+                next.play()
+                player = next
+            }
         }
-        .onDisappear { if let videoURL { library.endVideo(videoURL) } }
+        .onDisappear {
+            player?.pause()
+            player = nil
+            if let videoURL { library.endVideo(videoURL) }
+        }
         .alert("Info", isPresented: $showInfo) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -414,9 +424,10 @@ struct ItemViewer: View {
                 content
                 Spacer()
                 if let item {
-                    Text("Locked in Personal")
+                    Text("Stored in Personal")
                         .font(CipherFont.caption)
                         .foregroundStyle(CipherColor.sub)
+                        .accessibilityLabel("Status: stored in your Personal vault")
                     HStack {
                         Button("Export") { export(item) }.frame(maxWidth: .infinity, minHeight: 44)
                         Button("Delete") { library.softDelete([item.id]); close() }
@@ -577,7 +588,7 @@ struct NoteEditor: View {
                     Color.clear.frame(width: 44, height: 44)
                 }
                 TextField("Title", text: $title).font(CipherFont.title).foregroundStyle(CipherColor.ink)
-                Text("Locked in Personal").font(CipherFont.caption).foregroundStyle(CipherColor.sub)
+                Text("Stored in Personal").font(CipherFont.caption).foregroundStyle(CipherColor.sub)
                 TextEditor(text: $bodyText)
                     .font(CipherFont.body)
                     .scrollContentBackground(.hidden)
@@ -654,12 +665,30 @@ struct SharePayload: Identifiable {
 
 enum SharePresenter {
     static func share(items: [SharePayload]) {
-        guard !items.isEmpty, let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root = scene.keyWindow?.rootViewController else { return }
-        let controller = UIActivityViewController(activityItems: items.map { ShareItem(payload: $0) }, applicationActivities: nil)
-        controller.popoverPresentationController?.sourceView = root.view
-        controller.popoverPresentationController?.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)
-        root.present(controller, animated: true)
+        guard !items.isEmpty else { return }
+        present(UIActivityViewController(activityItems: items.map { ShareItem(payload: $0) }, applicationActivities: nil))
+    }
+
+    static func shareText(_ text: String) {
+        guard !text.isEmpty else { return }
+        present(UIActivityViewController(activityItems: [text], applicationActivities: nil))
+    }
+
+    private static func present(_ controller: UIActivityViewController) {
+        guard let host = topPresenter() else { return }
+        controller.popoverPresentationController?.sourceView = host.view
+        controller.popoverPresentationController?.sourceRect = CGRect(x: host.view.bounds.midX, y: host.view.bounds.midY, width: 1, height: 1)
+        host.present(controller, animated: true)
+    }
+
+    private static func topPresenter() -> UIViewController? {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = scene.keyWindow?.rootViewController else { return nil }
+        var top = root
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        return top
     }
 }
 

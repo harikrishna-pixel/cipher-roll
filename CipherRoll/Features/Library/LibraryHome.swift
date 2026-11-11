@@ -43,6 +43,7 @@ struct LibraryRoot: View {
     @State private var showRecap = false
     @State private var showInvite = false
     @State private var showContact = false
+    @State private var showRecovery = false
     @State private var showBackupExport = false
     @State private var showBackupRestore = false
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -85,6 +86,8 @@ struct LibraryRoot: View {
         )
         .navigationDestination(for: LibraryPage.self) { page in
             destination(page)
+                .navigationBarBackButtonHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
         }
     }
 
@@ -157,14 +160,20 @@ struct LibraryRoot: View {
         .fullScreenCover(isPresented: $library.showPhotoDenied) {
             PhotoDeniedScreen(onBack: { library.showPhotoDenied = false }, onChoose: { library.showPhotoDenied = false; library.beginAdd() })
         }
-        .sheet(isPresented: $plan.showRestoreNone) {
+        .sheet(isPresented: Binding(
+            get: { plan.showRestoreNone && plan.paywall == nil },
+            set: { if !$0 { plan.showRestoreNone = false } }
+        )) {
             RestoreNoneSheet(onPlans: {
                 plan.showRestoreNone = false
                 plan.present(.settings)
             }, onRetry: {
                 plan.showRestoreNone = false
                 Task { await plan.restore() }
-            }, onClose: { plan.showRestoreNone = false })
+            }, onClose: {
+                plan.showRestoreNone = false
+                showContact = true
+            })
                 .cipherCenteredSheet()
         }
         .sheet(isPresented: $showDelay) {
@@ -206,14 +215,18 @@ struct LibraryRoot: View {
             }
         }
         .onChange(of: library.importScreen) { screen in
-            guard case .done(let count, _) = screen, count > 0 else { return }
-            let added = AppGroupDefaults.suite.integer(forKey: RetentionKeys.addedThisWeek) + count
-            AppGroupDefaults.suite.set(added, forKey: RetentionKeys.addedThisWeek)
-            library.toast = CipherToast(kind: .success, title: "\(count) items imported safely", action: "View")
-            if !AppGroupDefaults.suite.bool(forKey: RetentionKeys.notificationAsked) {
-                path.append(.notifications)
-            } else {
-                ReviewRequester.request(moment: "import_done", analytics: settings.gate)
+            if case .done(let count, _) = screen, count > 0 {
+                let added = AppGroupDefaults.suite.integer(forKey: RetentionKeys.addedThisWeek) + count
+                AppGroupDefaults.suite.set(added, forKey: RetentionKeys.addedThisWeek)
+                library.toast = CipherToast(kind: .success, title: "\(count) items imported safely", action: "View")
+                for item in library.activeItems.prefix(12) { library.thumbnail(for: item) }
+                if !AppGroupDefaults.suite.bool(forKey: RetentionKeys.notificationAsked) {
+                    path.append(.notifications)
+                } else {
+                    ReviewRequester.request(moment: "import_done", analytics: settings.gate)
+                }
+            } else if screen == nil {
+                for item in library.activeItems.prefix(12) { library.thumbnail(for: item) }
             }
         }
         .sheet(isPresented: $showRecap) {
@@ -239,11 +252,15 @@ struct LibraryRoot: View {
                 code: inviteCode(),
                 onShare: { message in
                     settings.gate.track("invite_link_shared", properties: [:])
-                    SharePresenter.share(items: [SharePayload(data: Data(message.utf8), name: "Invite.txt")])
+                    SharePresenter.shareText(message)
                 },
                 onClose: { showInvite = false },
                 onOpened: { settings.gate.track("invite_entry_opened", properties: [:]) }
             )
+        }
+        .sheet(isPresented: $showRecovery) {
+            RecoveryKeySheet(onClose: { showRecovery = false })
+                .cipherCenteredSheet()
         }
         .sheet(isPresented: $showContact) {
             ContactSupportSheet(onClose: { showContact = false })
@@ -362,7 +379,7 @@ struct LibraryRoot: View {
                 pin: decoyPIN,
                 message: lock.message,
                 onBack: { path.removeLast() },
-                onDigit: { if decoyPIN.count < 12 { decoyPIN.append($0) } },
+                onDigit: { if decoyPIN.count < 6 { decoyPIN.append($0) } },
                 onDelete: { if !decoyPIN.isEmpty { decoyPIN.removeLast() } },
                 onCreate: {
                     lock.createDecoy(pin: decoyPIN) { ok in
@@ -443,9 +460,7 @@ struct LibraryRoot: View {
             onLockType: { path.append(.privacy) },
             onLockAfter: { showDelay = true },
             onPrivacy: { path.append(.privacy) },
-            onRecovery: {
-                settings.message = "Your recovery key was saved when the vault was created. It covers the real vault only."
-            },
+            onRecovery: { showRecovery = true },
             onSelfie: { path.append(.selfie) },
             onSecurity: {
                 settings.gate.track("backup_status_viewed", properties: ["status": "not_backed_up"])
@@ -456,7 +471,13 @@ struct LibraryRoot: View {
             onDecoy: { path.append(.decoy) },
             onRestore: { Task { await plan.restore() } },
             onManage: { plan.manage() },
+            restoring: plan.restoring || plan.managing,
             onLock: onLock,
+            onBack: {
+                if !path.isEmpty {
+                    path.removeLast()
+                }
+            },
             onHelp: { path.append(.help) },
             onInvite: { showInvite = true },
             onMoreApps: { path.append(.moreApps) },
@@ -834,7 +855,7 @@ struct HomeDashboard: View {
 
     private var tabBar: some View {
         HStack {
-            tab("Vault", "lock", onLock)
+            tab("Vault", "lock", onVaults)
             Button(action: onAdd) {
                 Text("+ Add")
                     .font(CipherFont.button)

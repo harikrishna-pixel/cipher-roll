@@ -41,7 +41,13 @@ struct RootView: View {
                         settings: settings,
                         lock: model,
                         shortcut: model.biometryOn ? model.biometryName : "your \(model.lockKind.backupTitle)",
-                        onLock: model.lockFromInside
+                        onLock: {
+                            #if DEBUG
+                            model.softLockForTesting()
+                            #else
+                            model.lockFromInside()
+                            #endif
+                        }
                     )
                     .onAppear {
                         library.attach(model.session, analytics: analytics)
@@ -101,8 +107,13 @@ struct RootView: View {
         case .photos:
             PhotosPrimerView(
                 onBack: model.back,
-                onContinue: { model.finishPhotos(requestAccess: true) },
-                onNotNow: { model.finishPhotos(requestAccess: false) }
+                onContinue: { model.finishPhotos(requestAccess: true) }
+            )
+        case .firstLock:
+            FirstLockDoneView(
+                onRemoveOriginal: model.continueFromFirstLock,
+                onKeepOriginal: model.continueFromFirstLock,
+                onGoToVault: model.continueFromFirstLock
             )
         case .choose:
             ChooseLockView(
@@ -123,6 +134,18 @@ struct RootView: View {
             )
         case .enterSecret, .confirmSecret:
             secretSetup
+        case .onboardingImport:
+            ImportContainer(
+                library: library,
+                isOnboarding: true,
+                onOnboardingFinished: model.finishOnboardingImport
+            )
+            .onAppear {
+                library.attach(model.session, analytics: analytics)
+                if library.importScreen == nil {
+                    library.beginAdd()
+                }
+            }
         case .faceOffer:
             FaceOfferView(
                 biometryName: model.biometryName,
@@ -170,10 +193,14 @@ struct RootView: View {
                 message: model.message,
                 showsOtherOptions: model.step == .enterSecret,
                 onBack: model.back,
-                onDigit: model.appendDigit,
+                onDigit: { digit in
+                    if model.pin.count < PinDraft.minimumDigits {
+                        model.appendDigit(digit)
+                    }
+                },
                 onDelete: model.deleteDigit,
                 onContinue: model.submitPin,
-                onOther: { model.cameFromChooser = true; model.step = .choose }
+                onOther: { model.openOtherLockOptions() }
             )
         case .pattern:
             PatternLockView(
@@ -183,8 +210,11 @@ struct RootView: View {
                 message: model.message,
                 showsBiometry: false,
                 biometryName: model.biometryName,
+                showsRecovery: false,
+                onBack: model.back,
+                onClear: { model.pattern = []; model.message = nil },
                 onChange: { model.pattern = $0 },
-                onFinish: model.submitPattern,
+                onFinish: { model.submitPattern($0) },
                 onBiometry: {},
                 onRecovery: {}
             )
@@ -192,6 +222,7 @@ struct RootView: View {
             CalculatorLockView(
                 caption: model.secretEntryTitle,
                 message: model.message,
+                onBack: model.back,
                 onEquals: model.submitCalculator
             )
             .id(model.step)
@@ -255,7 +286,7 @@ struct RootView: View {
                     showsBiometry: model.biometryOn,
                     biometryName: model.biometryName,
                     onChange: { model.pattern = $0 },
-                    onFinish: model.unlockPattern,
+                    onFinish: { model.unlockPattern($0) },
                     onBiometry: model.retryBiometry,
                     onRecovery: model.beginRecoveryUnlock
                 )
@@ -335,7 +366,7 @@ struct ScreenshotRoot: View {
         case "question2":
             UnlockQuestionView(biometryName: BiometryLabel.current(), selected: .biometry, onBack: {}, onSelect: { _ in }, onContinue: {})
         case "photos":
-            PhotosPrimerView(onBack: {}, onContinue: {}, onNotNow: {})
+            PhotosPrimerView(onBack: {}, onContinue: {})
         case "createPin":
             CreatePinView(
                 title: "Create a PIN",
@@ -427,7 +458,7 @@ struct ScreenshotRoot: View {
                 message: nil,
                 showsBiometry: true,
                 biometryName: BiometryLabel.current(),
-                onChange: { _ in }, onFinish: {}, onBiometry: {}, onRecovery: {}
+                onChange: { _ in }, onFinish: { _ in }, onBiometry: {}, onRecovery: {}
             )
         default:
             OnboardingDemoView(onStart: {}, onSkip: {})

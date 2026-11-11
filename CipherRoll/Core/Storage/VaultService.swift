@@ -486,9 +486,18 @@ final class VaultService {
         let record = try itemRecord(session: session, id: id)
         guard record.kind == .video else { throw VaultError.verifyFailed }
         let plain = try readItem(session: session, id: id)
-        let url = directory(InterruptedWorkSweeper.playback).appendingPathComponent(UUID().uuidString)
+        let ext = Self.videoExtension(for: record.displayName)
+        let url = directory(InterruptedWorkSweeper.playback).appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
         try ProtectedFile.write(plain, to: url)
         return url
+    }
+
+    private static func videoExtension(for displayName: String) -> String {
+        let ext = (displayName as NSString).pathExtension.lowercased()
+        switch ext {
+        case "mp4", "mov", "m4v", "hevc": return ext
+        default: return "mp4"
+        }
     }
 
     fileprivate func endVideoPlayback(_ url: URL) throws {

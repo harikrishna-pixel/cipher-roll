@@ -21,6 +21,8 @@ final class PlanModel: ObservableObject {
     @Published var showRestoreNone = false
     @Published var endedVaults: [EndedVault] = []
     @Published var message: String?
+    @Published var restoring = false
+    @Published var managing = false
     @Published private(set) var keptVaultID = "personal"
 
     private let client: any PurchaseClient
@@ -133,6 +135,9 @@ final class PlanModel: ObservableObject {
     }
 
     func restore() async {
+        guard !restoring else { return }
+        restoring = true
+        defer { restoring = false }
         let outcome = await client.restore()
         switch outcome {
         case .restored(let restored):
@@ -142,6 +147,7 @@ final class PlanModel: ObservableObject {
             message = "Purchases restored."
         case .none:
             analytics.track("restore_result", properties: ["result": "none"])
+            // Keep paywall up briefly so the sheet can present without a hard cut.
             showRestoreNone = true
         case .failed(let code):
             analytics.track("restore_result", properties: ["result": "failed", "code": code])
@@ -153,6 +159,8 @@ final class PlanModel: ObservableObject {
         analytics.track("manage_subscription_tapped", properties: [:])
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
         Task {
+            managing = true
+            defer { managing = false }
             try? await AppStore.showManageSubscriptions(in: scene)
         }
     }

@@ -70,9 +70,11 @@ enum SetupStep: Equatable {
     case privateQuestion
     case unlockQuestion
     case photos
+    case firstLock
     case choose
     case enterSecret
     case confirmSecret
+    case onboardingImport
     case faceOffer
     case recovery
     case recoveryTest
@@ -122,6 +124,7 @@ enum PhraseDraft {
     }
 
     static func strength(of text: String) -> (label: String, fraction: CGFloat) {
+        if text.isEmpty { return ("", 0) }
         if text.count >= 16 { return ("Strong", 0.86) }
         if text.count >= minimumCharacters { return ("Good", 0.55) }
         return ("Too short", 0.22)

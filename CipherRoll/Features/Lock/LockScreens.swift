@@ -15,7 +15,7 @@ struct CreatePinView: View {
 
     var body: some View {
         CipherScreen {
-            VStack(spacing: CipherSpace.s16) {
+            VStack(spacing: CipherSpace.s12) {
                 HStack {
                     CipherBackButton(action: onBack)
                     Spacer()
@@ -25,23 +25,32 @@ struct CreatePinView: View {
                     Spacer()
                     Color.clear.frame(width: 44, height: 44)
                 }
-                Text(title)
-                    .font(CipherFont.title)
-                    .foregroundStyle(CipherColor.ink)
-                Text(detail)
-                    .font(CipherFont.body)
-                    .foregroundStyle(CipherColor.sub)
-                    .multilineTextAlignment(.center)
-                PinDots(count: pin.count)
-                    .padding(.top, CipherSpace.s8)
-                if showsOtherOptions {
-                    Button("Other options", action: onOther)
-                        .font(CipherFont.button)
-                        .foregroundStyle(CipherColor.link)
-                        .frame(minHeight: 44)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: CipherSpace.s12) {
+                        Text(title)
+                            .font(CipherFont.title)
+                            .foregroundStyle(CipherColor.ink)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(detail)
+                            .font(CipherFont.body)
+                            .foregroundStyle(CipherColor.sub)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                        PinDots(count: pin.count)
+                            .padding(.top, CipherSpace.s4)
+                        if showsOtherOptions {
+                            Button("Other options", action: onOther)
+                                .font(CipherFont.button)
+                                .foregroundStyle(CipherColor.link)
+                                .frame(minHeight: 44)
+                        }
+                        StatusLine(text: message)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                StatusLine(text: message)
-                Spacer(minLength: CipherSpace.s12)
+                Spacer(minLength: CipherSpace.s8)
                 if PinDraft.canContinue(pin) {
                     Button("Continue", action: onContinue)
                         .buttonStyle(CipherGoldButtonStyle())
@@ -49,6 +58,12 @@ struct CreatePinView: View {
                 PinPad(showsBiometry: false, onDigit: onDigit, onDelete: onDelete, onBiometry: {})
             }
             .padding(CipherSpace.s20)
+            .onChange(of: pin) { value in
+                // Six dots are shown. Once they are filled, continue so the pad does not keep growing.
+                // Skip empty resets (clearEntry) so confirm→create does not re-fire.
+                guard value.count == PinDraft.minimumDigits else { return }
+                onContinue()
+            }
         }
     }
 }
@@ -97,12 +112,21 @@ struct ChooseLockView: View {
                         secretField
                     }
                     Toggle(isOn: Binding(get: { biometryOn }, set: onBiometry)) {
-                        Text("\(biometryName) as a shortcut")
-                            .font(CipherFont.body)
-                            .foregroundStyle(CipherColor.ink)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(biometryName) as a shortcut")
+                                .font(CipherFont.body)
+                                .foregroundStyle(CipherColor.ink)
+                            Text(biometryOn
+                                 ? "Next you will turn on \(biometryName) after your lock is created."
+                                 : "Optional. You can turn this on after you create your lock.")
+                                .font(CipherFont.caption)
+                                .foregroundStyle(CipherColor.sub)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .tint(CipherColor.gold)
                     .padding(.horizontal, CipherSpace.s16)
+                    .padding(.vertical, CipherSpace.s8)
                     .frame(minHeight: 56)
                     .background(CipherColor.card, in: RoundedRectangle(cornerRadius: CipherRadius.card))
                     StatusLine(text: message)
@@ -143,6 +167,7 @@ struct ChooseLockView: View {
                 .font(CipherFont.body)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .id(visible) // Rebuild so hide mode never keeps plaintext on screen.
                 Button(action: onToggleVisible) {
                     Image(systemName: visible ? "eye.slash" : "eye")
                         .frame(width: 44, height: 44)
@@ -166,13 +191,15 @@ struct ChooseLockView: View {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(CipherColor.line)
-                    Capsule().fill(CipherColor.gold).frame(width: proxy.size.width * strength.fraction)
+                    Capsule().fill(CipherColor.gold).frame(width: proxy.size.width * max(0, strength.fraction))
                 }
             }
             .frame(height: 6)
-            Text(strength.label)
-                .font(CipherFont.caption)
-                .foregroundStyle(CipherColor.sub)
+            if !strength.label.isEmpty {
+                Text(strength.label)
+                    .font(CipherFont.caption)
+                    .foregroundStyle(CipherColor.sub)
+            }
         }
     }
 
@@ -233,6 +260,7 @@ struct PhraseEntryView: View {
                     .font(CipherFont.body)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .id(visible)
                     Button(action: onToggleVisible) {
                         Image(systemName: visible ? "eye.slash" : "eye")
                             .frame(width: 44, height: 44)
@@ -610,31 +638,52 @@ struct PatternLockView: View {
     var message: String?
     var showsBiometry: Bool
     var biometryName: String
+    var showsRecovery: Bool = true
+    var onBack: (() -> Void)? = nil
+    var onClear: (() -> Void)? = nil
     var onChange: ([Int]) -> Void
-    var onFinish: () -> Void
+    var onFinish: ([Int]) -> Void
     var onBiometry: () -> Void
     var onRecovery: () -> Void
 
     var body: some View {
         CipherScreen {
             VStack(spacing: CipherSpace.s16) {
+                HStack {
+                    if let onBack {
+                        CipherBackButton(action: onBack)
+                    } else {
+                        Color.clear.frame(width: 44, height: 44)
+                    }
+                    Spacer()
+                    if let onClear, !dots.isEmpty {
+                        Button("Clear", action: onClear)
+                            .font(CipherFont.button)
+                            .foregroundStyle(CipherColor.link)
+                            .frame(minHeight: 44)
+                    }
+                }
                 CipherIcon.lock.image
                     .foregroundStyle(CipherColor.tintInk)
                     .frame(width: 56, height: 56)
                     .background(CipherColor.tint, in: RoundedRectangle(cornerRadius: 16))
-                    .padding(.top, CipherSpace.s12)
                 Text(title)
                     .font(CipherFont.titleSmall)
                     .foregroundStyle(CipherColor.ink)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(subtitle)
                     .font(CipherFont.body)
                     .foregroundStyle(CipherColor.sub)
-                PatternGrid(dots: dots, onChange: onChange, onFinish: onFinish)
+                PatternGrid(dots: dots, onComplete: { drawn in
+                    onChange(drawn)
+                    onFinish(drawn)
+                })
                     .frame(width: 260, height: 260)
                     .accessibilityLabel("Pattern grid")
                 Text(message ?? LockCopy.patternHint)
                     .font(CipherFont.caption)
                     .foregroundStyle(message == nil ? CipherColor.sub : CipherColor.danger)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 HStack(spacing: CipherSpace.s24) {
                     if showsBiometry {
@@ -645,10 +694,12 @@ struct PatternLockView: View {
                                 .frame(minHeight: 44)
                         }
                     }
-                    Button("Use recovery key", action: onRecovery)
-                        .font(CipherFont.button)
-                        .foregroundStyle(CipherColor.link)
-                        .frame(minHeight: 44)
+                    if showsRecovery {
+                        Button("Use recovery key", action: onRecovery)
+                            .font(CipherFont.button)
+                            .foregroundStyle(CipherColor.link)
+                            .frame(minHeight: 44)
+                    }
                 }
             }
             .padding(CipherSpace.s20)
@@ -658,9 +709,12 @@ struct PatternLockView: View {
 
 struct PatternGrid: View {
     var dots: [Int]
-    var onChange: ([Int]) -> Void
-    var onFinish: () -> Void
+    var onComplete: ([Int]) -> Void
+    @State private var dragging = false
+    @State private var live: [Int] = []
     @Environment(\.colorScheme) private var scheme
+
+    private var shown: [Int] { dragging ? live : dots }
 
     var body: some View {
         GeometryReader { proxy in
@@ -668,21 +722,21 @@ struct PatternGrid: View {
             let points = positions(in: size)
             ZStack {
                 Path { path in
-                    guard let first = dots.first else { return }
+                    guard let first = shown.first else { return }
                     path.move(to: points[first])
-                    for index in dots.dropFirst() {
+                    for index in shown.dropFirst() {
                         path.addLine(to: points[index])
                     }
                 }
                 .stroke(CipherColor.gold, style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                 ForEach(0..<PatternDraft.dotCount, id: \.self) { index in
-                    let selected = dots.contains(index)
+                    let selected = shown.contains(index)
                     Circle()
-                        .fill(selected ? CipherColor.gold : (scheme == .dark ? CipherColor.line : CipherColor.line))
-                        .frame(width: selected ? 22 : 16, height: selected ? 22 : 16)
-                        .background {
+                        .fill(selected ? CipherColor.gold : CipherColor.line)
+                        .frame(width: 18, height: 18)
+                        .overlay {
                             Circle()
-                                .stroke(CipherColor.gold.opacity(selected ? 0.35 : 0), lineWidth: 14)
+                                .stroke(CipherColor.gold.opacity(selected ? 0.35 : 0), lineWidth: 10)
                         }
                         .position(points[index])
                 }
@@ -691,15 +745,24 @@ struct PatternGrid: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        if !dragging {
+                            dragging = true
+                            live = dots
+                        }
                         guard let nearest = nearestDot(to: value.location, points: points) else { return }
-                        var next = dots
-                        if !next.contains(nearest) {
-                            next.append(nearest)
-                            onChange(next)
+                        if !live.contains(nearest) {
+                            live.append(nearest)
                         }
                     }
-                    .onEnded { _ in onFinish() }
+                    .onEnded { _ in
+                        let finished = live
+                        dragging = false
+                        live = []
+                        // Pass the drawn dots directly so confirm/create never reads a stale empty pattern.
+                        onComplete(finished)
+                    }
             )
+            .animation(nil, value: shown)
         }
     }
 
@@ -728,6 +791,7 @@ struct PatternGrid: View {
 struct CalculatorLockView: View {
     var caption: String?
     var message: String?
+    var onBack: (() -> Void)? = nil
     var onEquals: (String) -> Void
 
     @State private var state = CalculatorEntry.State()
@@ -735,12 +799,19 @@ struct CalculatorLockView: View {
     var body: some View {
         CipherScreen {
             VStack(spacing: CipherSpace.s16) {
+                if let onBack {
+                    HStack {
+                        CipherBackButton(action: onBack)
+                        Spacer()
+                    }
+                }
                 Spacer(minLength: CipherSpace.s12)
                 if let caption {
                     Text(caption)
                         .font(CipherFont.caption)
                         .foregroundStyle(CipherColor.sub)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Text(state.display)
                     .font(CipherFont.title)
